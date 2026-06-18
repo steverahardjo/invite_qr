@@ -1,4 +1,4 @@
-module github.com/steverahardjo/qr_invite
+module invite_qr
 
 go 1.25.0
 
