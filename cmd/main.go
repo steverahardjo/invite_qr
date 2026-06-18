@@ -14,9 +14,6 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	db := init_db("postgres://user:password@localhost:5432/dbname")
-
 	defer Log.Sync()
-	defer db.Close()
 
 }
