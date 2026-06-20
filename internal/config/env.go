@@ -1,5 +1,5 @@
 // file to setup all necessary environment init: db, observability, web launcher
-package internal
+package config
 
 import (
 	"context"
