@@ -128,3 +128,63 @@ func (e *EmailSender) SendEmailInvitation(
 
 	return nil
 }
+
+func GenHTML(
+	inviteLink string,
+	recName string,
+	title string,
+	pic string,
+) string {
+
+	return fmt.Sprintf(`
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="UTF-8">
+	<title>%s</title>
+</head>
+
+<body>
+	<div style="text-align:center; font-family:Arial, sans-serif;">
+
+		<img
+			src="%s"
+			alt="Invitation"
+			style="max-width:400px;"
+		>
+
+		<h1>%s</h1>
+
+		<p>
+			Hi %s,
+		</p>
+
+		<p>
+			You are invited to join our special event.
+		</p>
+
+		<a
+			href="%s"
+			style="
+				display:inline-block;
+				padding:12px 20px;
+				background:#333;
+				color:white;
+				text-decoration:none;
+				border-radius:5px;
+			"
+		>
+			Open Invitation
+		</a>
+
+	</div>
+</body>
+</html>
+`,
+		title,
+		pic,
+		title,
+		recName,
+		inviteLink,
+	)
+}
