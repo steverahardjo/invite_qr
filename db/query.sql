@@ -39,3 +39,8 @@ FROM participants
 WHERE sent = FALSE
 ORDER BY id
 LIMIT $1 OFFSET $2;
+
+-- name: MarkInvitesAsSent :exec
+UPDATE participants
+SET sent = TRUE
+WHERE id = ANY($1::int[]);

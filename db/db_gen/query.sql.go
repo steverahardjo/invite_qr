@@ -7,6 +7,8 @@ package db
 
 import (
 	"context"
+
+	"github.com/lib/pq"
 )
 
 const deleteParticipant = `-- name: DeleteParticipant :exec
@@ -156,6 +158,17 @@ func (q *Queries) ListParticipants(ctx context.Context, arg ListParticipantsPara
 		return nil, err
 	}
 	return items, nil
+}
+
+const markInvitesAsSent = `-- name: MarkInvitesAsSent :exec
+UPDATE participants
+SET sent = TRUE
+WHERE id = ANY($1::int[])
+`
+
+func (q *Queries) MarkInvitesAsSent(ctx context.Context, dollar_1 []int32) error {
+	_, err := q.db.ExecContext(ctx, markInvitesAsSent, pq.Array(dollar_1))
+	return err
 }
 
 const updateParticipantAccessed = `-- name: UpdateParticipantAccessed :one
