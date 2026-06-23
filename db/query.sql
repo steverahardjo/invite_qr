@@ -32,3 +32,10 @@ RETURNING *;
 -- name: DeleteParticipant :exec
 DELETE FROM participants
 WHERE id = $1;
+
+-- name: GetUnsentInvites :many
+SELECT *
+FROM participants
+WHERE sent = FALSE
+ORDER BY id
+LIMIT $1 OFFSET $2;

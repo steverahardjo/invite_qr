@@ -20,7 +20,7 @@ func (q *Queries) DeleteParticipant(ctx context.Context, id int32) error {
 }
 
 const getParticipantByID = `-- name: GetParticipantByID :one
-SELECT id, name, email, wa_number, accessed
+SELECT id, name, email, wa_number, accessed, sent
 FROM participants
 WHERE id = $1
 `
@@ -34,8 +34,52 @@ func (q *Queries) GetParticipantByID(ctx context.Context, id int32) (Participant
 		&i.Email,
 		&i.WaNumber,
 		&i.Accessed,
+		&i.Sent,
 	)
 	return i, err
+}
+
+const getUnsentInvites = `-- name: GetUnsentInvites :many
+SELECT id, name, email, wa_number, accessed, sent
+FROM participants
+WHERE sent = FALSE
+ORDER BY id
+LIMIT $1 OFFSET $2
+`
+
+type GetUnsentInvitesParams struct {
+	Limit  int32
+	Offset int32
+}
+
+func (q *Queries) GetUnsentInvites(ctx context.Context, arg GetUnsentInvitesParams) ([]Participant, error) {
+	rows, err := q.db.QueryContext(ctx, getUnsentInvites, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Participant
+	for rows.Next() {
+		var i Participant
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Email,
+			&i.WaNumber,
+			&i.Accessed,
+			&i.Sent,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const insertParticipant = `-- name: InsertParticipant :one
@@ -49,7 +93,7 @@ VALUES (
     $2,
     $3
 )
-RETURNING id, name, email, wa_number, accessed
+RETURNING id, name, email, wa_number, accessed, sent
 `
 
 type InsertParticipantParams struct {
@@ -67,12 +111,13 @@ func (q *Queries) InsertParticipant(ctx context.Context, arg InsertParticipantPa
 		&i.Email,
 		&i.WaNumber,
 		&i.Accessed,
+		&i.Sent,
 	)
 	return i, err
 }
 
 const listParticipants = `-- name: ListParticipants :many
-SELECT id, name, email, wa_number, accessed
+SELECT id, name, email, wa_number, accessed, sent
 FROM participants
 ORDER BY id
 LIMIT $1 OFFSET $2
@@ -98,6 +143,7 @@ func (q *Queries) ListParticipants(ctx context.Context, arg ListParticipantsPara
 			&i.Email,
 			&i.WaNumber,
 			&i.Accessed,
+			&i.Sent,
 		); err != nil {
 			return nil, err
 		}
@@ -117,7 +163,7 @@ UPDATE participants
 SET accessed = TRUE
 WHERE email = $1
    OR wa_number = $2
-RETURNING id, name, email, wa_number, accessed
+RETURNING id, name, email, wa_number, accessed, sent
 `
 
 type UpdateParticipantAccessedParams struct {
@@ -134,6 +180,7 @@ func (q *Queries) UpdateParticipantAccessed(ctx context.Context, arg UpdateParti
 		&i.Email,
 		&i.WaNumber,
 		&i.Accessed,
+		&i.Sent,
 	)
 	return i, err
 }

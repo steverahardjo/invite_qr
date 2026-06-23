@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"invite_qr/cmd"
-	db "invite_qr/db/db_gen"
 	"net/http"
 	"time"
 
@@ -15,31 +14,15 @@ import (
 	"go.uber.org/zap"
 )
 
-type Service struct {
-	queries        *db.Queries
-	whatsappSender *WhatsappSender
-	emailSender    *EmailSender
-	date_limit     time.Time
-	hour_limit     time.Time
-}
-
 type WhatsappSender struct {
 	apiKey   string
 	ourPhone string
 }
 
 type EmailSender struct {
-	Client   *resend.Client
-	ourEmail string
-}
-
-func GenWebsite() string {
-
-}
-
-func (s *Service) checkAllowedSend() bool {
-	now := time.Now()
-	return now.Before(s.date_limit) && now.Before(s.hour_limit)
+	Client    *resend.Client
+	ourEmail  string
+	picString string
 }
 
 // func to send whatsapp message, run inside (s *Service) BulkSend
@@ -87,11 +70,7 @@ func (w *WhatsappSender) WhatsappSend(ctx context.Context, userPhone string, msg
 	return nil
 }
 
-func (e *EmailSender) SendEmailInvitation(
-	ctx context.Context,
-	emailAddr string,
-	html string,
-) error {
+func (e *EmailSender) SendEmailInvitation(ctx context.Context, emailAddr string, html string) error {
 
 	logger := cmd.LoggerFromContext(ctx)
 
@@ -129,12 +108,7 @@ func (e *EmailSender) SendEmailInvitation(
 	return nil
 }
 
-func GenHTML(
-	inviteLink string,
-	recName string,
-	title string,
-	pic string,
-) string {
+func GenHTML(inviteLink string, recName string, title string) string {
 
 	return fmt.Sprintf(`
 <!DOCTYPE html>
@@ -181,8 +155,6 @@ func GenHTML(
 </body>
 </html>
 `,
-		title,
-		pic,
 		title,
 		recName,
 		inviteLink,

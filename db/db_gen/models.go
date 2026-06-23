@@ -10,4 +10,5 @@ type Participant struct {
 	Email    string
 	WaNumber string
 	Accessed bool
+	Sent     bool
 }
