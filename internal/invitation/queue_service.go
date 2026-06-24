@@ -70,8 +70,7 @@ func (s *Service) BulkSendInvite(ctx context.Context, eventTitle string) error {
 
 			if g.WaNumber != "" {
 				channel = "whatsapp"
-				msg := fmt.Sprintf(
-					"Hello, %s! You are invited to %s. Please click the link below to access the event website:\n%s",
+				msg := fmt.Sprintf("Hello, %s! You are invited to %s. Please click the link below to access the event website:\n%s",
 					g.Name,
 					eventTitle,
 					eventURL,
@@ -106,10 +105,7 @@ func (s *Service) BulkSendInvite(ctx context.Context, eventTitle string) error {
 				continue
 			}
 
-			logger.Info("invite sent successfully",
-				zap.Int32("guest_id", g.ID),
-				zap.String("channel", channel),
-			)
+			logger.Info("invite sent successfully",zap.Int32("guest_id", g.ID),zap.String("channel", channel),)
 		}
 	}
 }
