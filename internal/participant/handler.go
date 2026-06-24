@@ -1,23 +1,22 @@
 package participant
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 
 	db "invite_qr/db/db_gen"
-
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type Handler struct {
-	db      *pgxpool.Pool
+	db      *sql.DB
 	queries *db.Queries
 }
 
-func NewHandler(pool *pgxpool.Pool) *Handler {
+func NewHandler(dbConn *sql.DB) *Handler {
 	return &Handler{
-		db:      pool,
-		queries: db.New(pool),
+		db:      dbConn,
+		queries: db.New(dbConn),
 	}
 }
 
@@ -51,21 +50,25 @@ func (h *Handler) AddParticipant() http.HandlerFunc {
 			Email    string `json:"email"`
 			WaNumber string `json:"wa_number"`
 		}
+
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if _, err := h.queries.InsertParticipant(
+
+		_, err := h.queries.InsertParticipant(
 			r.Context(),
 			db.InsertParticipantParams{
 				Name:     req.Name,
 				Email:    req.Email,
 				WaNumber: req.WaNumber,
 			},
-		); err != nil {
+		)
+		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+
 		w.WriteHeader(http.StatusCreated)
 	}
 }
@@ -73,21 +76,29 @@ func (h *Handler) AddParticipant() http.HandlerFunc {
 func (h *Handler) UpdateParticipantAccessed() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			ParticipantID int64 `json:"participant_id"`
+			ParticipantID int64  `json:"participant_id"`
+			Email         string `json:"email"`
+			WaNumber      string `json:"wa_number"`
 		}
+
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if _, err := h.queries.UpdateParticipantAccessed(
+
+		_, err := h.queries.UpdateParticipantAccessed(
 			r.Context(),
 			db.UpdateParticipantAccessedParams{
-				ParticipantID: req.ParticipantID,
+				ID:       int32(req.ParticipantID),
+				Email:    req.Email,
+				WaNumber: req.WaNumber,
 			},
-		); err != nil {
+		)
+		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+
 		w.WriteHeader(http.StatusOK)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"go.uber.org/zap"
 	"invite_qr/cmd"
 	"fmt"
+	util "invite_qr/pkg"
 )
 
 type Service struct {
@@ -17,6 +18,28 @@ type Service struct {
 	date_limit     time.Time
 	hour_limit     time.Time
 	BaseWebURL     *url.URL
+}
+
+
+
+// NewService creates a Service for sending invitation messages.
+//
+// The service uses the provided database connection to retrieve and
+// update invitation records. Invitations may be sent through WhatsApp
+// or email depending on the recipient's available contact information.
+//
+// dateLimit and hourLimit define the allowed sending window.
+// baseWebURL is used to generate invitation links included in outgoing
+// messages.
+func NewService(dbConn *sql.DB, whatsappSender *WhatsappSender, emailSender *EmailSender, dateLimit time.Time, hourLimit time.Time, baseWebURL *url.URL) *Service {
+	return &Service{
+		queries:        db.New(dbConn),
+		whatsappSender: whatsappSender,
+		emailSender:    emailSender,
+		date_limit:     dateLimit,
+		hour_limit:     hourLimit,
+		BaseWebURL:     baseWebURL,
+	}
 }
 
 func (s *Service) checkAllowedSend() bool {
@@ -61,8 +84,7 @@ func (s *Service) BulkSendInvite(ctx context.Context, eventTitle string) error {
 
 			eventURL := fmt.Sprintf("%sevent/%s/%s",
 				s.BaseWebURL.String(),
-				url.PathEscape(eventTitle),
-				url.PathEscape(g.Name),
+				util.EncodeID(int(g.ID), g.WaNumber, g.Email, s.queries.Salt),
 			)
 
 			var sendErr error

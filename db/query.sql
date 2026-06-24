@@ -27,6 +27,7 @@ UPDATE participants
 SET accessed = TRUE
 WHERE email = $1
    OR wa_number = $2
+   AND id = $3
 RETURNING *;
 
 -- name: DeleteParticipant :exec

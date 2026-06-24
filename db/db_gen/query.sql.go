@@ -176,16 +176,18 @@ UPDATE participants
 SET accessed = TRUE
 WHERE email = $1
    OR wa_number = $2
+   AND id = $3
 RETURNING id, name, email, wa_number, accessed, sent
 `
 
 type UpdateParticipantAccessedParams struct {
 	Email    string
 	WaNumber string
+	ID       int32
 }
 
 func (q *Queries) UpdateParticipantAccessed(ctx context.Context, arg UpdateParticipantAccessedParams) (Participant, error) {
-	row := q.db.QueryRowContext(ctx, updateParticipantAccessed, arg.Email, arg.WaNumber)
+	row := q.db.QueryRowContext(ctx, updateParticipantAccessed, arg.Email, arg.WaNumber, arg.ID)
 	var i Participant
 	err := row.Scan(
 		&i.ID,
