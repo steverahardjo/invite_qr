@@ -1,6 +1,7 @@
 package invitation
 
 import (
+	"context"
 	"database/sql"
 	db "invite_qr/db/db_gen"
 	"net/http"
@@ -27,14 +28,14 @@ func NewHandler(dbConn *sql.DB, whatsappSender *WhatsappSender, emailSender *Ema
 	}
 }
 
-func (h *Handler) HandleBulkInvite(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+func (h *Handler) HandleBulkInvite(ctx context.Context) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		err := h.service.BulkSendInvite(ctx, "My Event")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 
-	err := h.service.BulkSendInvite(ctx, "My Event")
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		w.WriteHeader(http.StatusOK)
 	}
-
-	w.WriteHeader(http.StatusOK)
 }
