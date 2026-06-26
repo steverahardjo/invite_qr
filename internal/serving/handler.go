@@ -18,7 +18,7 @@ func (h *Handler) GetUserDetails(ctx context.Context) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		logger := cmd.LoggerFromContext(ctx)
-		logger.Info("GetUserDetails", zap.String("id", r.URL.Query().Get("id")))
+		logger.Info("User details are requestd: ", zap.String("id", r.URL.Query().Get("id")))
 		id := strings.Split(r.URL.Query().Get("id"), "")[0]
 		user, err := h.service.GetParticipantName(ctx, id)
 		if err != nil {

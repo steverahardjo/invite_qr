@@ -1,14 +1,16 @@
 package invitation
 
 import (
+	"context"
+	sql "database/sql"
+	"fmt"
+	"invite_qr/cmd"
 	db "invite_qr/db/db_gen"
+	util "invite_qr/pkg"
 	"net/url"
 	"time"
-	"context"
+
 	"go.uber.org/zap"
-	"invite_qr/cmd"
-	"fmt"
-	util "invite_qr/pkg"
 )
 
 type Service struct {
@@ -18,9 +20,8 @@ type Service struct {
 	date_limit     time.Time
 	hour_limit     time.Time
 	BaseWebURL     *url.URL
+	decryptor      *util.IDEncryptor
 }
-
-
 
 // NewService creates a Service for sending invitation messages.
 //
@@ -31,7 +32,7 @@ type Service struct {
 // dateLimit and hourLimit define the allowed sending window.
 // baseWebURL is used to generate invitation links included in outgoing
 // messages.
-func NewService(dbConn *sql.DB, whatsappSender *WhatsappSender, emailSender *EmailSender, dateLimit time.Time, hourLimit time.Time, baseWebURL *url.URL) *Service {
+func NewService(dbConn *sql.DB, whatsappSender *WhatsappSender, emailSender *EmailSender, dateLimit time.Time, hourLimit time.Time, baseWebURL *url.URL, decryptor *util.IDEncryptor) *Service {
 	return &Service{
 		queries:        db.New(dbConn),
 		whatsappSender: whatsappSender,
@@ -39,6 +40,7 @@ func NewService(dbConn *sql.DB, whatsappSender *WhatsappSender, emailSender *Ema
 		date_limit:     dateLimit,
 		hour_limit:     hourLimit,
 		BaseWebURL:     baseWebURL,
+		decryptor:      decryptor,
 	}
 }
 
@@ -84,7 +86,7 @@ func (s *Service) BulkSendInvite(ctx context.Context, eventTitle string) error {
 
 			eventURL := fmt.Sprintf("%sevent/%s/%s",
 				s.BaseWebURL.String(),
-				util.EncodeID(int(g.ID), g.WaNumber, g.Email, s.queries.Salt),
+				s.decryptor.Encode(g.ID, g.WaNumber, g.Email),
 			)
 
 			var sendErr error
@@ -118,8 +120,7 @@ func (s *Service) BulkSendInvite(ctx context.Context, eventTitle string) error {
 				)
 				continue
 			}
-
-			if err := s.queries.(ctx, g.ID); err != nil {
+			if err := s.queries.MarkInvitesAsSent(ctx, []int32{g.ID}); err != nil {
 				logger.Error("invite sent but failed to mark as sent",
 					zap.Error(err),
 					zap.Int32("guest_id", g.ID),
@@ -127,7 +128,7 @@ func (s *Service) BulkSendInvite(ctx context.Context, eventTitle string) error {
 				continue
 			}
 
-			logger.Info("invite sent successfully",zap.Int32("guest_id", g.ID),zap.String("channel", channel),)
+			logger.Info("invite sent successfully", zap.Int32("guest_id", g.ID), zap.String("channel", channel))
 		}
 	}
 }
