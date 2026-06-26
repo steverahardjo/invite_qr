@@ -10,7 +10,7 @@ import (
 	"net/url"
 	"time"
 
-	"go.uber.org/zap"
+	zap "go.uber.org/zap"
 )
 
 type Service struct {
@@ -49,10 +49,51 @@ func (s *Service) checkAllowedSend() bool {
 	return now.Before(s.date_limit) && now.Before(s.hour_limit)
 }
 
+func (s *Service) SendInviteOnetime(
+	ctx context.Context,
+	guestID int32,
+	eventTitle string,
+	email string,
+	waNumber string,
+	name string,
+) error {
+
+	token := s.decryptor.Encode(guestID, waNumber, email)
+
+	eventURL := fmt.Sprintf(
+		"%sevent/%s",
+		s.BaseWebURL.String(),
+		token,
+	)
+
+	if waNumber != "" {
+		msg := fmt.Sprintf(
+			"Hello, %s! You are invited to %s. Please click the link below to access the event website:\n%s",
+			name,
+			eventTitle,
+			eventURL,
+		)
+
+		if err := s.whatsappSender.WhatsappSend(ctx, waNumber, msg); err != nil {
+			return err
+		}
+
+		return nil
+	}
+
+	if email != "" {
+		html := GenHTML(eventURL, name, eventTitle)
+		return s.emailSender.SendEmailInvitation(ctx, email, html)
+	}
+
+	return fmt.Errorf("guest has no supported communication channel")
+}
+
 func (s *Service) BulkSendInvite(ctx context.Context, eventTitle string) error {
 	logger := cmd.LoggerFromContext(ctx)
 
 	const batchSize int32 = 50
+
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 
@@ -71,12 +112,9 @@ func (s *Service) BulkSendInvite(ctx context.Context, eventTitle string) error {
 			return nil
 		}
 
-		for _, g := range guests {
-			if !s.checkAllowedSend() {
-				logger.Info("send limit reached")
-				return nil
-			}
+		var sentIDs []int32
 
+		for _, g := range guests {
 			select {
 			case <-ctx.Done():
 				logger.Info("context cancelled")
@@ -84,9 +122,17 @@ func (s *Service) BulkSendInvite(ctx context.Context, eventTitle string) error {
 			case <-ticker.C:
 			}
 
-			eventURL := fmt.Sprintf("%sevent/%s/%s",
+			if !s.checkAllowedSend() {
+				logger.Info("send limit reached")
+				return nil
+			}
+
+			token := s.decryptor.Encode(g.ID, g.WaNumber, g.Email)
+
+			eventURL := fmt.Sprintf(
+				"%sevent/%s",
 				s.BaseWebURL.String(),
-				s.decryptor.Encode(g.ID, g.WaNumber, g.Email),
+				token,
 			)
 
 			var sendErr error
@@ -94,18 +140,25 @@ func (s *Service) BulkSendInvite(ctx context.Context, eventTitle string) error {
 
 			if g.WaNumber != "" {
 				channel = "whatsapp"
-				msg := fmt.Sprintf("Hello, %s! You are invited to %s. Please click the link below to access the event website:\n%s",
+
+				msg := fmt.Sprintf(
+					"Hello, %s! You are invited to %s. Please click the link below to access the event website:\n%s",
 					g.Name,
 					eventTitle,
 					eventURL,
 				)
+
 				sendErr = s.whatsappSender.WhatsappSend(ctx, g.WaNumber, msg)
+
 			} else if g.Email != "" {
 				channel = "email"
+
 				html := GenHTML(eventURL, g.Name, eventTitle)
 				sendErr = s.emailSender.SendEmailInvitation(ctx, g.Email, html)
+
 			} else {
-				logger.Warn("guest has no supported communication channel",
+				logger.Warn(
+					"guest has no supported communication channel",
 					zap.Int32("guest_id", g.ID),
 					zap.String("name", g.Name),
 				)
@@ -113,22 +166,29 @@ func (s *Service) BulkSendInvite(ctx context.Context, eventTitle string) error {
 			}
 
 			if sendErr != nil {
-				logger.Error("failed to send invite",
+				logger.Error(
+					"failed to send invite",
 					zap.Error(sendErr),
 					zap.Int32("guest_id", g.ID),
 					zap.String("channel", channel),
 				)
 				continue
 			}
-			if err := s.queries.MarkInvitesAsSent(ctx, []int32{g.ID}); err != nil {
-				logger.Error("invite sent but failed to mark as sent",
-					zap.Error(err),
-					zap.Int32("guest_id", g.ID),
-				)
-				continue
-			}
 
-			logger.Info("invite sent successfully", zap.Int32("guest_id", g.ID), zap.String("channel", channel))
+			sentIDs = append(sentIDs, g.ID)
+
+			logger.Info(
+				"invite sent successfully",
+				zap.Int32("guest_id", g.ID),
+				zap.String("channel", channel),
+			)
+		}
+
+		if len(sentIDs) > 0 {
+			if err := s.queries.MarkInvitesAsSent(ctx, sentIDs); err != nil {
+				logger.Error("failed to mark invites as sent", zap.Error(err))
+				return err
+			}
 		}
 	}
 }
