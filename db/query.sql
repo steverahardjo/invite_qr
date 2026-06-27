@@ -16,6 +16,11 @@ SELECT *
 FROM participants
 WHERE id = $1;
 
+-- name: GetParticipantByExternalID :one
+SELECT *
+FROM participants
+WHERE external_id = $1;
+
 -- name: ListParticipants :many
 SELECT *
 FROM participants
@@ -28,6 +33,12 @@ SET accessed = TRUE
 WHERE email = $1
    OR wa_number = $2
    AND id = $3
+RETURNING *;
+
+-- name: UpdateParticipantAccessedByExternalID :one
+UPDATE participants
+SET accessed = TRUE
+WHERE external_id = $1
 RETURNING *;
 
 -- name: DeleteParticipant :exec

@@ -1,6 +1,6 @@
--- name: InitParticipants :exec
 CREATE TABLE IF NOT EXISTS participants (
     id SERIAL PRIMARY KEY,
+    external_id UUID NOT NULL DEFAULT gen_random_uuid() UNIQUE,
     name VARCHAR(255) NOT NULL,
     email VARCHAR(255) NOT NULL UNIQUE,
     wa_number VARCHAR(20) NOT NULL UNIQUE,

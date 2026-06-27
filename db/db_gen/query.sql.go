@@ -8,6 +8,7 @@ package db
 import (
 	"context"
 
+	"github.com/google/uuid"
 	"github.com/lib/pq"
 )
 
@@ -21,8 +22,29 @@ func (q *Queries) DeleteParticipant(ctx context.Context, id int32) error {
 	return err
 }
 
+const getParticipantByExternalID = `-- name: GetParticipantByExternalID :one
+SELECT id, external_id, name, email, wa_number, accessed, sent
+FROM participants
+WHERE external_id = $1
+`
+
+func (q *Queries) GetParticipantByExternalID(ctx context.Context, externalID uuid.UUID) (Participant, error) {
+	row := q.db.QueryRowContext(ctx, getParticipantByExternalID, externalID)
+	var i Participant
+	err := row.Scan(
+		&i.ID,
+		&i.ExternalID,
+		&i.Name,
+		&i.Email,
+		&i.WaNumber,
+		&i.Accessed,
+		&i.Sent,
+	)
+	return i, err
+}
+
 const getParticipantByID = `-- name: GetParticipantByID :one
-SELECT id, name, email, wa_number, accessed, sent
+SELECT id, external_id, name, email, wa_number, accessed, sent
 FROM participants
 WHERE id = $1
 `
@@ -32,6 +54,7 @@ func (q *Queries) GetParticipantByID(ctx context.Context, id int32) (Participant
 	var i Participant
 	err := row.Scan(
 		&i.ID,
+		&i.ExternalID,
 		&i.Name,
 		&i.Email,
 		&i.WaNumber,
@@ -42,7 +65,7 @@ func (q *Queries) GetParticipantByID(ctx context.Context, id int32) (Participant
 }
 
 const getUnsentInvites = `-- name: GetUnsentInvites :many
-SELECT id, name, email, wa_number, accessed, sent
+SELECT id, external_id, name, email, wa_number, accessed, sent
 FROM participants
 WHERE sent = FALSE
 ORDER BY id
@@ -65,6 +88,7 @@ func (q *Queries) GetUnsentInvites(ctx context.Context, arg GetUnsentInvitesPara
 		var i Participant
 		if err := rows.Scan(
 			&i.ID,
+			&i.ExternalID,
 			&i.Name,
 			&i.Email,
 			&i.WaNumber,
@@ -95,7 +119,7 @@ VALUES (
     $2,
     $3
 )
-RETURNING id, name, email, wa_number, accessed, sent
+RETURNING id, external_id, name, email, wa_number, accessed, sent
 `
 
 type InsertParticipantParams struct {
@@ -109,6 +133,7 @@ func (q *Queries) InsertParticipant(ctx context.Context, arg InsertParticipantPa
 	var i Participant
 	err := row.Scan(
 		&i.ID,
+		&i.ExternalID,
 		&i.Name,
 		&i.Email,
 		&i.WaNumber,
@@ -119,7 +144,7 @@ func (q *Queries) InsertParticipant(ctx context.Context, arg InsertParticipantPa
 }
 
 const listParticipants = `-- name: ListParticipants :many
-SELECT id, name, email, wa_number, accessed, sent
+SELECT id, external_id, name, email, wa_number, accessed, sent
 FROM participants
 ORDER BY id
 LIMIT $1 OFFSET $2
@@ -141,6 +166,7 @@ func (q *Queries) ListParticipants(ctx context.Context, arg ListParticipantsPara
 		var i Participant
 		if err := rows.Scan(
 			&i.ID,
+			&i.ExternalID,
 			&i.Name,
 			&i.Email,
 			&i.WaNumber,
@@ -177,7 +203,7 @@ SET accessed = TRUE
 WHERE email = $1
    OR wa_number = $2
    AND id = $3
-RETURNING id, name, email, wa_number, accessed, sent
+RETURNING id, external_id, name, email, wa_number, accessed, sent
 `
 
 type UpdateParticipantAccessedParams struct {
@@ -191,6 +217,29 @@ func (q *Queries) UpdateParticipantAccessed(ctx context.Context, arg UpdateParti
 	var i Participant
 	err := row.Scan(
 		&i.ID,
+		&i.ExternalID,
+		&i.Name,
+		&i.Email,
+		&i.WaNumber,
+		&i.Accessed,
+		&i.Sent,
+	)
+	return i, err
+}
+
+const updateParticipantAccessedByExternalID = `-- name: UpdateParticipantAccessedByExternalID :one
+UPDATE participants
+SET accessed = TRUE
+WHERE external_id = $1
+RETURNING id, external_id, name, email, wa_number, accessed, sent
+`
+
+func (q *Queries) UpdateParticipantAccessedByExternalID(ctx context.Context, externalID uuid.UUID) (Participant, error) {
+	row := q.db.QueryRowContext(ctx, updateParticipantAccessedByExternalID, externalID)
+	var i Participant
+	err := row.Scan(
+		&i.ID,
+		&i.ExternalID,
 		&i.Name,
 		&i.Email,
 		&i.WaNumber,

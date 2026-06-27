@@ -4,11 +4,16 @@
 
 package db
 
+import (
+	"github.com/google/uuid"
+)
+
 type Participant struct {
-	ID       int32
-	Name     string
-	Email    string
-	WaNumber string
-	Accessed bool
-	Sent     bool
+	ID         int32
+	ExternalID uuid.UUID
+	Name       string
+	Email      string
+	WaNumber   string
+	Accessed   bool
+	Sent       bool
 }

@@ -3,11 +3,13 @@ package config
 
 import (
 	"context"
+	"database/sql"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
-	pgxpool "github.com/jackc/pgx/v5/pgxpool"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"go.uber.org/zap"
 )
 
@@ -30,11 +32,12 @@ type Config struct {
 	PoolMaxConnLife time.Duration
 	PoolMaxConnIdle time.Duration
 	PoolHealthCheck time.Duration
+
+	AdminPasswordHash string
 }
 
-// DB wraps the pgx connection pool.
 type DB struct {
-	Pool *pgxpool.Pool
+	Conn *sql.DB
 }
 
 func NewDBFromEnv(
@@ -43,24 +46,35 @@ func NewDBFromEnv(
 	log *zap.Logger,
 ) (*DB, error) {
 
-	pgxConfig, err := pgxpool.ParseConfig(dbDSN(cfg))
+	conn, err := sql.Open("pgx", dbDSN(cfg))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	pool, err := pgxpool.NewWithConfig(ctx, pgxConfig)
-	if err != nil {
-		return nil, err
+	if cfg.PoolMaxConnections > 0 {
+		conn.SetMaxOpenConns(cfg.PoolMaxConnections)
 	}
-	log.Info("database pool initialized")
-	return &DB{
-		Pool: pool,
-	}, nil
+	if cfg.PoolMinConnections > 0 {
+		conn.SetMaxIdleConns(cfg.PoolMinConnections)
+	}
+	if cfg.PoolMaxConnLife > 0 {
+		conn.SetConnMaxLifetime(cfg.PoolMaxConnLife)
+	}
+	if cfg.PoolMaxConnIdle > 0 {
+		conn.SetConnMaxIdleTime(cfg.PoolMaxConnIdle)
+	}
+
+	if err := conn.PingContext(ctx); err != nil {
+		return nil, fmt.Errorf("failed to ping database: %w", err)
+	}
+
+	log.Info("database connection initialized")
+	return &DB{Conn: conn}, nil
 }
 
 func (db *DB) Close(log *zap.Logger) {
-	log.Info("closing database pool")
-	db.Pool.Close()
+	log.Info("closing database connection")
+	db.Conn.Close()
 }
 
 func dbDSN(cfg *Config) string {
