@@ -9,11 +9,11 @@ import (
 )
 
 type Participant struct {
-	ID         int32
-	ExternalID uuid.UUID
-	Name       string
-	Email      string
-	WaNumber   string
-	Accessed   bool
-	Sent       bool
+	ID         int32     `json:"id"`
+	ExternalID uuid.UUID `json:"external_id"`
+	Name       string    `json:"name"`
+	Email      string    `json:"email"`
+	WaNumber   string    `json:"wa_number"`
+	Accessed   bool      `json:"accessed"`
+	Sent       bool      `json:"sent"`
 }

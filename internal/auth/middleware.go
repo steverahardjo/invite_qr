@@ -8,6 +8,9 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+// AuthMiddleware returns an HTTP middleware that validates Bearer JWT tokens
+// from the Authorization header. It responds 401 with a JSON body when the
+// token is expired, or a plain 401 for any other token validation failure.
 func AuthMiddleware(secretKey []byte) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

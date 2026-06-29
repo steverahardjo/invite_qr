@@ -12,6 +12,8 @@ import (
 	zap "go.uber.org/zap"
 )
 
+// Service orchestrates the sending of event invitations through WhatsApp
+// and/or email, with rate limiting, date/time send windows, and batch processing.
 type Service struct {
 	queries        *db.Queries
 	whatsappSender *WhatsappSender
@@ -21,6 +23,8 @@ type Service struct {
 	BaseWebURL     *url.URL
 }
 
+// NewService creates an invitation Service with the given database connection,
+// sender implementations, send window limits, and base URL for invite links.
 func NewService(dbConn *sql.DB, whatsappSender *WhatsappSender, emailSender *EmailSender, dateLimit time.Time, hourLimit time.Time, baseWebURL *url.URL) *Service {
 	return &Service{
 		queries:        db.New(dbConn),
@@ -32,11 +36,16 @@ func NewService(dbConn *sql.DB, whatsappSender *WhatsappSender, emailSender *Ema
 	}
 }
 
+// checkAllowedSend returns true if the current time is before both the
+// configured date and hour send limits.
 func (s *Service) checkAllowedSend() bool {
 	now := time.Now()
 	return now.Before(s.date_limit) && now.Before(s.hour_limit)
 }
 
+// SendInviteOnetime looks up a participant by ID, constructs an event invite
+// link using their external UUID, and sends the invitation via WhatsApp (if
+// waNumber is provided) or email (if email is provided).
 func (s *Service) SendInviteOnetime(
 	ctx context.Context,
 	guestID int32,
@@ -57,7 +66,9 @@ func (s *Service) SendInviteOnetime(
 		participant.ExternalID.String(),
 	)
 
-	if waNumber != "" {
+	var sent bool
+
+	if waNumber != "" && s.whatsappSender != nil {
 		msg := fmt.Sprintf(
 			"Hello, %s! You are invited to %s. Please click the link below to access the event website:\n%s",
 			name,
@@ -69,17 +80,25 @@ func (s *Service) SendInviteOnetime(
 			return err
 		}
 
-		return nil
+		sent = true
 	}
 
-	if email != "" {
+	if !sent && email != "" && s.emailSender != nil {
 		html := GenHTML(eventURL, name, eventTitle)
 		return s.emailSender.SendEmailInvitation(ctx, email, html)
 	}
 
-	return fmt.Errorf("guest has no supported communication channel")
+	if !sent {
+		return fmt.Errorf("no sender available for guest")
+	}
+
+	return nil
 }
 
+// BulkSendInvite fetches unsent participants in batches of 50, sends each
+// invitation with a 500ms throttle between sends, respects the configured
+// date/time send windows, and marks successfully sent invites in the database.
+// The method respects context cancellation for graceful shutdown.
 func (s *Service) BulkSendInvite(ctx context.Context, eventTitle string) error {
 	logger := server.LoggerFromContext(ctx)
 
@@ -124,12 +143,9 @@ func (s *Service) BulkSendInvite(ctx context.Context, eventTitle string) error {
 				g.ExternalID.String(),
 			)
 
-			var sendErr error
-			var channel string
+			var sent bool
 
-			if g.WaNumber != "" {
-				channel = "whatsapp"
-
+			if g.WaNumber != "" && s.whatsappSender != nil {
 				msg := fmt.Sprintf(
 					"Hello, %s! You are invited to %s. Please click the link below to access the event website:\n%s",
 					g.Name,
@@ -137,29 +153,34 @@ func (s *Service) BulkSendInvite(ctx context.Context, eventTitle string) error {
 					eventURL,
 				)
 
-				sendErr = s.whatsappSender.WhatsappSend(ctx, g.WaNumber, msg)
+				if err := s.whatsappSender.WhatsappSend(ctx, g.WaNumber, msg); err != nil {
+					logger.Error("whatsapp failed, falling back to email",
+						zap.Error(err),
+						zap.Int32("guest_id", g.ID),
+					)
+				} else {
+					sent = true
+				}
+			}
 
-			} else if g.Email != "" {
-				channel = "email"
-
+			if !sent && g.Email != "" && s.emailSender != nil {
 				html := GenHTML(eventURL, g.Name, eventTitle)
-				sendErr = s.emailSender.SendEmailInvitation(ctx, g.Email, html)
 
-			} else {
+				if err := s.emailSender.SendEmailInvitation(ctx, g.Email, html); err != nil {
+					logger.Error("email also failed",
+						zap.Error(err),
+						zap.Int32("guest_id", g.ID),
+					)
+					continue
+				}
+				sent = true
+			}
+
+			if !sent {
 				logger.Warn(
 					"guest has no supported communication channel",
 					zap.Int32("guest_id", g.ID),
 					zap.String("name", g.Name),
-				)
-				continue
-			}
-
-			if sendErr != nil {
-				logger.Error(
-					"failed to send invite",
-					zap.Error(sendErr),
-					zap.Int32("guest_id", g.ID),
-					zap.String("channel", channel),
 				)
 				continue
 			}
@@ -169,7 +190,6 @@ func (s *Service) BulkSendInvite(ctx context.Context, eventTitle string) error {
 			logger.Info(
 				"invite sent successfully",
 				zap.Int32("guest_id", g.ID),
-				zap.String("channel", channel),
 			)
 		}
 

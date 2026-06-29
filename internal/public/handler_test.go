@@ -6,7 +6,6 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	db_gen "invite_qr/db/db_gen"
@@ -21,10 +20,6 @@ type mockPublicService struct {
 
 func (m *mockPublicService) GetParticipantByExternalID(_ context.Context, _ string) (*db_gen.Participant, error) {
 	return m.participant, m.err
-}
-
-func (m *mockPublicService) UpdateParticipantAccessed(_ context.Context, _, _, _ string) error {
-	return m.err
 }
 
 func TestHandleGetInvite_Success(t *testing.T) {
@@ -129,58 +124,37 @@ func TestGetUserDetails_MissingID(t *testing.T) {
 	}
 }
 
-func TestMarkAttendance_Success(t *testing.T) {
-	mock := &mockPublicService{}
-	h := NewHandler(mock)
-
-	body := `{"participant_id":"some-uuid","email":"a@b.com","wa_number":"123"}`
-	req := httptest.NewRequest(http.MethodPost, "/attendance", strings.NewReader(body))
-	rec := httptest.NewRecorder()
-
-	h.MarkAttendance().ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
-	}
-}
-
-func TestMarkAttendance_InvalidJSON(t *testing.T) {
+func TestSendQRCode_Success(t *testing.T) {
 	h := NewHandler(&mockPublicService{})
 
-	req := httptest.NewRequest(http.MethodPost, "/attendance", strings.NewReader(`{bad}`))
-	rec := httptest.NewRecorder()
-
-	h.MarkAttendance().ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rec.Code)
-	}
-}
-
-func TestMarkAttendance_ServiceError(t *testing.T) {
-	mock := &mockPublicService{err: errors.New("update failed")}
-	h := NewHandler(mock)
-
-	body := `{"participant_id":"some-uuid","email":"a@b.com","wa_number":"123"}`
-	req := httptest.NewRequest(http.MethodPost, "/attendance", strings.NewReader(body))
-	rec := httptest.NewRecorder()
-
-	h.MarkAttendance().ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500, got %d", rec.Code)
-	}
-}
-
-func TestSendQRCode(t *testing.T) {
-	h := NewHandler(&mockPublicService{})
-
-	req := httptest.NewRequest(http.MethodPost, "/send-qr", nil)
+	req := httptest.NewRequest(http.MethodGet, "/send-qr?participant_id=some-uuid", nil)
 	rec := httptest.NewRecorder()
 
 	h.SendQRCode().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	ct := rec.Header().Get("Content-Type")
+	if ct != "image/png" {
+		t.Fatalf("expected Content-Type image/png, got %s", ct)
+	}
+
+	if rec.Body.Len() == 0 {
+		t.Fatal("expected non-empty response body")
+	}
+}
+
+func TestSendQRCode_MissingID(t *testing.T) {
+	h := NewHandler(&mockPublicService{})
+
+	req := httptest.NewRequest(http.MethodGet, "/send-qr", nil)
+	rec := httptest.NewRecorder()
+
+	h.SendQRCode().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
 	}
 }

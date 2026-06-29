@@ -7,3 +7,4 @@ sql:
       go:
         package: "db"
         out: "db_gen"
+        emit_json_tags: true

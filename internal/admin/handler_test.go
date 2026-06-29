@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	db "invite_qr/db/db_gen"
+
+	"github.com/google/uuid"
 )
 
 type mockAdminStore struct {
@@ -30,7 +32,7 @@ func (m *mockAdminStore) InsertParticipant(_ context.Context, _ db.InsertPartici
 	return db.Participant{}, m.err
 }
 
-func (m *mockAdminStore) UpdateParticipantAccessed(_ context.Context, _ db.UpdateParticipantAccessedParams) (db.Participant, error) {
+func (m *mockAdminStore) UpdateParticipantAccessedByExternalID(_ context.Context, _ uuid.UUID) (db.Participant, error) {
 	if m.updated != nil {
 		return *m.updated, m.err
 	}
@@ -108,19 +110,77 @@ func TestAddParticipant_InvalidJSON(t *testing.T) {
 	}
 }
 
-func TestUpdateParticipantAccessed_Success(t *testing.T) {
+func TestMarkAttendance_Success(t *testing.T) {
 	mock := &mockAdminStore{
 		updated: &db.Participant{ID: 1, Accessed: true},
 	}
 	h := NewHandler(mock)
 
-	body := `{"participant_id":1,"email":"alice@test.com","wa_number":"123"}`
-	req := httptest.NewRequest(http.MethodPut, "/participants", strings.NewReader(body))
+	id := uuid.New()
+	body := `{"participant_id":"` + id.String() + `"}`
+	req := httptest.NewRequest(http.MethodPost, "/admin/attendance", strings.NewReader(body))
 	rec := httptest.NewRecorder()
 
-	h.UpdateParticipantAccessed().ServeHTTP(rec, req)
+	h.MarkAttendance().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestMarkAttendance_InvalidJSON(t *testing.T) {
+	h := NewHandler(&mockAdminStore{})
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/attendance", strings.NewReader(`{bad}`))
+	rec := httptest.NewRecorder()
+
+	h.MarkAttendance().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestMarkAttendance_MissingID(t *testing.T) {
+	h := NewHandler(&mockAdminStore{})
+
+	body := `{}`
+	req := httptest.NewRequest(http.MethodPost, "/admin/attendance", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	h.MarkAttendance().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestMarkAttendance_InvalidUUID(t *testing.T) {
+	h := NewHandler(&mockAdminStore{})
+
+	body := `{"participant_id":"not-a-uuid"}`
+	req := httptest.NewRequest(http.MethodPost, "/admin/attendance", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	h.MarkAttendance().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestMarkAttendance_StoreError(t *testing.T) {
+	mock := &mockAdminStore{err: errors.New("db error")}
+	h := NewHandler(mock)
+
+	id := uuid.New()
+	body := `{"participant_id":"` + id.String() + `"}`
+	req := httptest.NewRequest(http.MethodPost, "/admin/attendance", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	h.MarkAttendance().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", rec.Code)
 	}
 }

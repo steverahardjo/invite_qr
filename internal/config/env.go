@@ -1,4 +1,5 @@
-// file to setup all necessary environment init: db, observability, web launcher
+// Package config handles environment initialization including database
+// connection setup, connection pooling, and configuration parsing.
 package config
 
 import (
@@ -13,6 +14,8 @@ import (
 	"go.uber.org/zap"
 )
 
+// Config holds all configurable application parameters including database
+// connection details, SSL settings, and connection pool limits.
 type Config struct {
 	Name              string
 	User              string
@@ -36,10 +39,14 @@ type Config struct {
 	AdminPasswordHash string
 }
 
+// DB wraps a *sql.DB connection for use throughout the application.
 type DB struct {
 	Conn *sql.DB
 }
 
+// NewDBFromEnv opens a PostgreSQL connection using the pgx driver via
+// database/sql, configures connection pool parameters from the Config struct,
+// and verifies connectivity with a ping. Returns the DB wrapper or an error.
 func NewDBFromEnv(
 	ctx context.Context,
 	cfg *Config,
@@ -72,11 +79,13 @@ func NewDBFromEnv(
 	return &DB{Conn: conn}, nil
 }
 
+// Close shuts down the underlying database connection pool.
 func (db *DB) Close(log *zap.Logger) {
 	log.Info("closing database connection")
 	db.Conn.Close()
 }
 
+// dbDSN builds a space-separated key=value DSN string from the Config struct.
 func dbDSN(cfg *Config) string {
 	vals := dbValues(cfg)
 
@@ -88,6 +97,7 @@ func dbDSN(cfg *Config) string {
 	return strings.Join(parts, " ")
 }
 
+// setIfNotEmpty adds the key-value pair to the map only if value is non-empty.
 func setIfNotEmpty(
 	p map[string]string,
 	key string,
@@ -98,6 +108,7 @@ func setIfNotEmpty(
 	}
 }
 
+// setIfPositive adds the key-value pair as a string only if value > 0.
 func setIfPositive(
 	p map[string]string,
 	key string,
@@ -108,6 +119,7 @@ func setIfPositive(
 	}
 }
 
+// setIfPositiveDuration adds the key-value pair as milliseconds only if value > 0.
 func setIfPositiveDuration(
 	p map[string]string,
 	key string,
@@ -118,6 +130,7 @@ func setIfPositiveDuration(
 	}
 }
 
+// dbValues builds a map of libpq-compatible connection parameters from the Config.
 func dbValues(cfg *Config) map[string]string {
 	p := map[string]string{}
 
@@ -137,36 +150,6 @@ func dbValues(cfg *Config) map[string]string {
 	setIfNotEmpty(p, "sslcert", cfg.SSLCertPath)
 	setIfNotEmpty(p, "sslkey", cfg.SSLKeyPath)
 	setIfNotEmpty(p, "sslrootcert", cfg.SSLRootCertPath)
-
-	setIfPositive(
-		p,
-		"pool_min_conns",
-		cfg.PoolMinConnections,
-	)
-
-	setIfPositive(
-		p,
-		"pool_max_conns",
-		cfg.PoolMaxConnections,
-	)
-
-	setIfPositiveDuration(
-		p,
-		"pool_max_conn_lifetime",
-		cfg.PoolMaxConnLife,
-	)
-
-	setIfPositiveDuration(
-		p,
-		"pool_max_conn_idle_time",
-		cfg.PoolMaxConnIdle,
-	)
-
-	setIfPositiveDuration(
-		p,
-		"pool_health_check_period",
-		cfg.PoolHealthCheck,
-	)
 
 	return p
 }

@@ -1,4 +1,3 @@
-// list of service func to send invitations through user preferences
 package invite
 
 import (
@@ -8,23 +7,53 @@ import (
 	"fmt"
 	"invite_qr/internal/server"
 	"net/http"
+	"os"
 	"time"
 
 	resend "github.com/resend/resend-go/v3"
 	"go.uber.org/zap"
 )
 
+// WhatsappSender sends text messages via the Meta/Facebook Graph API.
 type WhatsappSender struct {
 	apiKey   string
 	ourPhone string
 }
 
+// EmailSender sends HTML emails via the Resend API.
 type EmailSender struct {
 	Client   *resend.Client
 	ourEmail string
 }
 
-// func to send whatsapp message, run inside (s *Service) BulkSend
+// InitWhatsappSender creates a WhatsappSender using the WA_API_KEY environment
+// variable. Returns nil if the API key is not set.
+func InitWhatsappSender(ourPhone string) *WhatsappSender {
+	api_key := os.Getenv("WA_API_KEY")
+	if api_key == "" {
+		return nil
+	}
+	return &WhatsappSender{
+		apiKey:   api_key,
+		ourPhone: ourPhone,
+	}
+}
+
+// InitEmailSender creates an EmailSender using the RESEND_API_KEY environment
+// variable and initializes a Resend client. Returns nil if the key is not set.
+func InitEmailSender(ourEmail string) *EmailSender {
+	api_key := os.Getenv("RESEND_API_KEY")
+	if api_key == "" {
+		return nil
+	}
+	return &EmailSender{
+		Client:   resend.NewClient(api_key),
+		ourEmail: ourEmail,
+	}
+}
+
+// WhatsappSend sends a plain-text message to the specified user phone number
+// via the Meta Graph API v23.0 messages endpoint using a Bearer token.
 func (w *WhatsappSender) WhatsappSend(ctx context.Context, userPhone string, msg string) error {
 	logger := server.LoggerFromContext(ctx)
 	logger.Info("sending whatsapp message", zap.String("userPhone", userPhone), zap.Time("time_sent", time.Now()))
@@ -69,6 +98,8 @@ func (w *WhatsappSender) WhatsappSend(ctx context.Context, userPhone string, msg
 	return nil
 }
 
+// SendEmailInvitation sends an HTML email invitation to the given address
+// using the Resend API with a configured subject line.
 func (e *EmailSender) SendEmailInvitation(ctx context.Context, emailAddr string, html string) error {
 
 	logger := server.LoggerFromContext(ctx)
@@ -107,6 +138,8 @@ func (e *EmailSender) SendEmailInvitation(ctx context.Context, emailAddr string,
 	return nil
 }
 
+// GenHTML produces an inline-styled HTML email body with the event title,
+// recipient name, and a styled "Open Invitation" link button.
 func GenHTML(inviteLink string, recName string, title string) string {
 
 	return fmt.Sprintf(`

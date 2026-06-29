@@ -13,18 +13,20 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// Admin represents an admin user with a username and bcrypt password hash.
 type Admin struct {
 	Username     string
 	PasswordHash string
 }
 
+// JwtService provides JWT token creation and admin credential validation.
 type JwtService struct {
 	SecretKey      []byte
 	ExpirationTime time.Duration
 	Issuer         string
 }
 
-// NewJwtService is a constructor to safely initialize your service
+// NewJwtService creates a JwtService with the given secret, token expiry duration, and issuer name.
 func NewJwtService(secret string, expiry time.Duration, issuer string) *JwtService {
 	return &JwtService{
 		SecretKey:      []byte(secret),
@@ -33,6 +35,8 @@ func NewJwtService(secret string, expiry time.Duration, issuer string) *JwtServi
 	}
 }
 
+// SetPasswordHashEnv hashes the plaintext password with bcrypt and stores it in the
+// HASHED_ADMIN_PASSWORD environment variable for subsequent login comparisons.
 func (j *JwtService) SetPasswordHashEnv(password string) error {
 	hashed, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
@@ -42,9 +46,11 @@ func (j *JwtService) SetPasswordHashEnv(password string) error {
 	return nil
 }
 
-// ComparePasswordHash gets the password hash from the environment and compares it with the user input
+// ComparePasswordHash reads the hashed admin password from the HASHED_ADMIN_PASSWORD
+// environment variable, compares it against the provided plaintext password using
+// bcrypt, and returns whether they match. Internal errors are logged but not leaked
+// to the caller.
 func ComparePasswordHash(password string, log *zap.Logger) (bool, error) {
-	// Get the hash directly from the environment variables
 	hashedAdmin := os.Getenv("HASHED_ADMIN_PASSWORD")
 	if hashedAdmin == "" {
 		log.Error("no hashed admin password set")
@@ -53,7 +59,6 @@ func ComparePasswordHash(password string, log *zap.Logger) (bool, error) {
 
 	err := bcrypt.CompareHashAndPassword([]byte(hashedAdmin), []byte(password))
 	if err != nil {
-		// Log the error internally, but don't crash or leak data
 		log.Warn("failed password comparison attempt", zap.Error(err))
 		return false, nil
 	}
@@ -61,11 +66,12 @@ func ComparePasswordHash(password string, log *zap.Logger) (bool, error) {
 	return true, nil
 }
 
-// LoginAdmin validates the credentials and returns a signed JWT if successful
+// LoginAdmin validates the provided username and password against the stored
+// hash and returns a signed JWT (HS256) containing the username, admin flag,
+// issuer, expiration, and issued-at claims on success.
 func (j *JwtService) LoginAdmin(ctx context.Context, username, password string) (string, error) {
 	logger := server.LoggerFromContext(ctx)
 
-	// Correctly handle the two return values from ComparePasswordHash
 	isValid, err := ComparePasswordHash(password, logger)
 	if err != nil {
 		return "", err
@@ -75,16 +81,14 @@ func (j *JwtService) LoginAdmin(ctx context.Context, username, password string) 
 		return "", errors.New("invalid credentials")
 	}
 
-	// Generate claims if password is valid
 	claims := jwt.MapClaims{
 		"sub":      username,
 		"is_admin": true,
-		"iss":      j.Issuer, // Using the struct's config instead of hardcoded "admin"
+		"iss":      j.Issuer,
 		"exp":      time.Now().Add(j.ExpirationTime).Unix(),
 		"iat":      time.Now().Unix(),
 	}
 
-	// Create and sign the token
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	signedToken, err := token.SignedString(j.SecretKey)
 	if err != nil {
