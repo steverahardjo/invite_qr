@@ -1,40 +1,31 @@
-// Package invite provides HTTP handlers and services for sending event
-// invitations via WhatsApp and email, including single and bulk delivery.
 package invite
 
 import (
 	"context"
 	"net/http"
 	"strconv"
+
+	"github.com/danielgtaylor/huma/v2"
 )
 
-// inviteService defines the contract for sending invitations.
-// The production implementation is *Service; tests can provide a mock.
 type inviteService interface {
-	// BulkSendInvite sends invitations to all unsent participants.
 	BulkSendInvite(ctx context.Context, eventTitle string) error
-	// SendInviteOnetime sends a single invitation to the specified guest.
 	SendInviteOnetime(ctx context.Context, guestID int32, eventTitle string, email string, waNumber string, name string) error
 }
 
-// Handler holds the dependencies needed by the invite HTTP handlers.
 type Handler struct {
 	service inviteService
 }
 
-// NewHandler creates a Handler backed by the given invite service.
 func NewHandler(service inviteService) *Handler {
 	return &Handler{
 		service: service,
 	}
 }
 
-// HandleBulkInvite returns an HTTP handler that triggers a bulk invitation
-// send for all unsent participants using the provided context for lifecycle
-// management (e.g. cancellation on server shutdown).
-func (h *Handler) HandleBulkInvite(ctx context.Context) http.HandlerFunc {
+func (h *Handler) HandleBulkInvite(eventTitle string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		err := h.service.BulkSendInvite(ctx, "My Event")
+		err := h.service.BulkSendInvite(r.Context(), eventTitle)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -44,9 +35,6 @@ func (h *Handler) HandleBulkInvite(ctx context.Context) http.HandlerFunc {
 	}
 }
 
-// HandleSendInviteOnetime returns an HTTP handler that sends a single invitation
-// to a specific guest identified by guest_id query parameter, with optional
-// email, wa_number, and name overrides.
 func (h *Handler) HandleSendInviteOnetime(eventTitle string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		guestID := r.URL.Query().Get("guest_id")
@@ -84,4 +72,35 @@ func (h *Handler) HandleSendInviteOnetime(eventTitle string) http.HandlerFunc {
 
 		w.WriteHeader(http.StatusOK)
 	}
+}
+
+func (h *Handler) RegisterHumaRoutes(api huma.API, eventTitle string) {
+	huma.Post(api, "/api/bulk-invite", func(ctx context.Context, input *struct{}) (*struct {
+		Body struct{}
+	}, error) {
+		if err := h.service.BulkSendInvite(ctx, eventTitle); err != nil {
+			return nil, huma.Error500InternalServerError("failed to send bulk invite", err)
+		}
+		return &struct{ Body struct{} }{}, nil
+	})
+
+	huma.Get(api, "/api/send-invite", func(ctx context.Context, input *struct {
+		GuestID  int32  `query:"guest_id"`
+		Email    string `query:"email"`
+		WaNumber string `query:"wa_number"`
+		Name     string `query:"name"`
+	}) (*struct {
+		Body struct{}
+	}, error) {
+		if input.GuestID == 0 {
+			return nil, huma.Error400BadRequest("missing guest_id")
+		}
+		if input.Email == "" && input.WaNumber == "" {
+			return nil, huma.Error400BadRequest("either email or wa_number is required")
+		}
+		if err := h.service.SendInviteOnetime(ctx, input.GuestID, eventTitle, input.Email, input.WaNumber, input.Name); err != nil {
+			return nil, huma.Error500InternalServerError("failed to send invite", err)
+		}
+		return &struct{ Body struct{} }{}, nil
+	})
 }

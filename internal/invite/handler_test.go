@@ -28,7 +28,7 @@ func TestHandleBulkInvite_Success(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/bulk-invite", nil)
 	rec := httptest.NewRecorder()
 
-	h.HandleBulkInvite(context.Background()).ServeHTTP(rec, req)
+	h.HandleBulkInvite("My Event").ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
@@ -42,7 +42,7 @@ func TestHandleBulkInvite_ServiceError(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/bulk-invite", nil)
 	rec := httptest.NewRecorder()
 
-	h.HandleBulkInvite(context.Background()).ServeHTTP(rec, req)
+	h.HandleBulkInvite("My Event").ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500, got %d", rec.Code)

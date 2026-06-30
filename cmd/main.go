@@ -13,8 +13,9 @@ import (
 	"syscall"
 	"time"
 
-	"invite_qr/db/db_gen"
+	db "invite_qr/db/db_gen"
 	"invite_qr/internal/admin"
+	"invite_qr/internal/api"
 	"invite_qr/internal/auth"
 	"invite_qr/internal/config"
 	"invite_qr/internal/invite"
@@ -55,7 +56,12 @@ func main() {
 	inviteH := invite.NewHandler(inviteSvc)
 
 	mux := http.NewServeMux()
-	SetRoutes(mux, ctx, authH, adminH, publicH, inviteH, jwtSvc.SecretKey)
+	humaAPI := api.New(mux)
+	api.UseAdminAuth(humaAPI, jwtSvc.SecretKey)
+	publicH.RegisterHumaRoutes(humaAPI)
+	authH.RegisterHumaRoutes(humaAPI)
+	adminH.RegisterHumaRoutes(humaAPI)
+	inviteH.RegisterHumaRoutes(humaAPI, "Anna and David Wedding")
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -124,13 +130,13 @@ func SetContext(logger *zap.Logger) context.Context {
 // SetConfig loads the application configuration from environment variables.
 func SetConfig() *config.Config {
 	return &config.Config{
-		Name:              os.Getenv("DB_NAME"),
-		User:              os.Getenv("DB_USER"),
-		Host:              os.Getenv("DB_HOST"),
-		Port:              os.Getenv("DB_PORT"),
-		SSLMode:           os.Getenv("DB_SSLMODE"),
-		ConnectionTimeout: 10,
-		Password:          os.Getenv("DB_PASSWORD"),
+		Name:               os.Getenv("DB_NAME"),
+		User:               os.Getenv("DB_USER"),
+		Host:               os.Getenv("DB_HOST"),
+		Port:               os.Getenv("DB_PORT"),
+		SSLMode:            os.Getenv("DB_SSLMODE"),
+		ConnectionTimeout:  10,
+		Password:           os.Getenv("DB_PASSWORD"),
 		PoolMinConnections: 5,
 		PoolMaxConnections: 25,
 	}
@@ -168,32 +174,4 @@ func SetInviteService(dbConn *sql.DB) *invite.Service {
 	)
 }
 
-// SetRoutes registers all HTTP handlers on the provided mux.
-// Admin routes are protected by JWT auth middleware.
-func SetRoutes(
-	mux *http.ServeMux,
-	ctx context.Context,
-	authH *auth.JwtHandler,
-	adminH *admin.Handler,
-	publicH *public.Handler,
-	inviteH *invite.Handler,
-	secretKey []byte,
-) {
-	// public
-	mux.HandleFunc("GET /api/invite/{token}", publicH.HandleGetInvite())
-	mux.HandleFunc("GET /api/user", publicH.GetUserDetails())
-	mux.HandleFunc("GET /api/qr", publicH.SendQRCode())
 
-	// auth
-	mux.HandleFunc("POST /api/admin/login", authH.LoginAdmin())
-
-	// admin (protected)
-	authMw := auth.AuthMiddleware(secretKey)
-	mux.Handle("GET /api/admin/participants", authMw(adminH.ListParticipants()))
-	mux.Handle("POST /api/admin/participants", authMw(adminH.AddParticipant()))
-	mux.Handle("POST /api/admin/attendance", authMw(adminH.MarkAttendance()))
-
-	// invite
-	mux.HandleFunc("POST /api/bulk-invite", inviteH.HandleBulkInvite(ctx))
-	mux.HandleFunc("GET /api/send-invite", inviteH.HandleSendInviteOnetime("My Event"))
-}

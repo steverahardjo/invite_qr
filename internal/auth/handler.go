@@ -1,33 +1,25 @@
-// Package auth provides authentication and authorization handlers,
-// including JWT-based login and middleware for protected routes.
 package auth
 
 import (
 	"context"
 	"encoding/json"
 	"net/http"
+
+	"github.com/danielgtaylor/huma/v2"
 )
 
-// authenticator defines the contract for admin login operations.
-// The production implementation is *JwtService; tests can provide a mock.
 type authenticator interface {
-	// LoginAdmin validates admin credentials and returns a signed JWT token.
 	LoginAdmin(ctx context.Context, username, password string) (string, error)
 }
 
-// JwtHandler handles admin authentication HTTP requests.
 type JwtHandler struct {
 	service authenticator
 }
 
-// NewJwtHandler creates a JwtHandler backed by the given authenticator.
 func NewJwtHandler(service authenticator) *JwtHandler {
 	return &JwtHandler{service: service}
 }
 
-// LoginAdmin returns an HTTP handler that accepts a JSON body with "username"
-// and "password", validates credentials via the authenticator, and returns
-// a signed JWT token on success or 401 on failure.
 func (h *JwtHandler) LoginAdmin() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
@@ -49,4 +41,26 @@ func (h *JwtHandler) LoginAdmin() http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"token": token})
 	}
+}
+
+func (h *JwtHandler) RegisterHumaRoutes(api huma.API) {
+	type LoginInput struct {
+		Body struct {
+			Username string `json:"username"`
+			Password string `json:"password"`
+		}
+	}
+	type LoginOutput struct {
+		Body struct {
+			Token string `json:"token"`
+		}
+	}
+
+	huma.Post(api, "/api/admin/login", func(ctx context.Context, input *LoginInput) (*LoginOutput, error) {
+		token, err := h.service.LoginAdmin(ctx, input.Body.Username, input.Body.Password)
+		if err != nil {
+			return nil, huma.Error401Unauthorized("invalid credentials")
+		}
+		return &LoginOutput{Body: struct{ Token string `json:"token"` }{Token: token}}, nil
+	})
 }

@@ -32,6 +32,7 @@ export default function AdminDashboard() {
 
   const [sendingId, setSendingId] = useState<number | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [sendSuccess, setSendSuccess] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<ParticipantInput>({
     name: "",
@@ -89,8 +90,11 @@ export default function AdminDashboard() {
   async function handleSendInvite(p: Participant) {
     setSendingId(p.id);
     setSendError(null);
+    setSendSuccess(null);
     try {
       await api.sendInvite(p);
+      setSendSuccess(`Invite sent to ${p.name}`);
+      setTimeout(() => setSendSuccess(null), 3000);
       await fetchParticipants();
     } catch (err) {
       setSendError(
@@ -226,6 +230,7 @@ export default function AdminDashboard() {
       </div>
 
       {sendError && <div className="msg-error">{sendError}</div>}
+      {sendSuccess && <div className="msg-success">{sendSuccess}</div>}
 
       {/* Participants Table */}
       <div className="table-shell">

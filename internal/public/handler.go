@@ -1,39 +1,32 @@
-// Package public provides HTTP handlers for guest-facing endpoints including
-// fetching invite details, viewing user details, and requesting QR code delivery.
 package public
 
 import (
 	"context"
 	"encoding/json"
-	"invite_qr/internal/server"
 	"net/http"
 	"strconv"
 
+	"invite_qr/internal/server"
+
 	db_gen "invite_qr/db/db_gen"
 
+	"github.com/danielgtaylor/huma/v2"
 	qrcode "github.com/skip2/go-qrcode"
 	"go.uber.org/zap"
 )
 
-// publicService defines the contract for guest-facing participant operations.
-// The production implementation is *Service; tests can provide a mock.
 type publicService interface {
-	// GetParticipantByExternalID looks up a participant by their external UUID.
 	GetParticipantByExternalID(ctx context.Context, externalID string) (*db_gen.Participant, error)
 }
 
-// Handler holds the dependencies needed by the public HTTP handlers.
 type Handler struct {
 	service publicService
 }
 
-// NewHandler creates a Handler backed by the given service.
 func NewHandler(service publicService) *Handler {
 	return &Handler{service: service}
 }
 
-// HandleGetInvite returns an HTTP handler that reads the participant's external
-// UUID from the URL path, looks up the participant, and returns their details as JSON.
 func (h *Handler) HandleGetInvite() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		token := r.PathValue("token")
@@ -51,8 +44,6 @@ func (h *Handler) HandleGetInvite() http.HandlerFunc {
 	}
 }
 
-// GetUserDetails returns an HTTP handler that reads an "id" query parameter,
-// looks up the participant, and returns their details as JSON.
 func (h *Handler) GetUserDetails() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		logger := server.LoggerFromContext(r.Context())
@@ -72,8 +63,6 @@ func (h *Handler) GetUserDetails() http.HandlerFunc {
 	}
 }
 
-// SendQRCode returns an HTTP handler that accepts a participant_id query parameter,
-// generates a QR code PNG containing the external UUID, and serves it as an image.
 func (h *Handler) SendQRCode() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		logger := server.LoggerFromContext(r.Context())
@@ -103,4 +92,72 @@ func (h *Handler) SendQRCode() http.HandlerFunc {
 		w.Header().Set("Content-Length", strconv.Itoa(len(png)))
 		w.Write(png)
 	}
+}
+
+func (h *Handler) RegisterHumaRoutes(api huma.API) {
+	huma.Get(api, "/api/invite/{token}", func(ctx context.Context, input *struct {
+		Token string `path:"token"`
+	}) (*struct {
+		Body *db_gen.Participant
+	}, error) {
+		if input.Token == "" {
+			return nil, huma.Error400BadRequest("missing token")
+		}
+		participant, err := h.service.GetParticipantByExternalID(ctx, input.Token)
+		if err != nil {
+			return nil, huma.Error500InternalServerError("failed to get participant", err)
+		}
+		return &struct{ Body *db_gen.Participant }{Body: participant}, nil
+	})
+
+	huma.Get(api, "/api/user", func(ctx context.Context, input *struct {
+		ID string `query:"id"`
+	}) (*struct {
+		Body *db_gen.Participant
+	}, error) {
+		logger := server.LoggerFromContext(ctx)
+		logger.Info("user details requested", zap.String("id", input.ID))
+		if input.ID == "" {
+			return nil, huma.Error400BadRequest("missing id")
+		}
+		participant, err := h.service.GetParticipantByExternalID(ctx, input.ID)
+		if err != nil {
+			return nil, huma.Error500InternalServerError("failed to get participant", err)
+		}
+		return &struct{ Body *db_gen.Participant }{Body: participant}, nil
+	})
+
+	huma.Get(api, "/api/qr", func(ctx context.Context, input *struct {
+		ParticipantID string `query:"participant_id"`
+	}) (*struct {
+		ContentType string `header:"Content-Type"`
+		Body        []byte
+	}, error) {
+		logger := server.LoggerFromContext(ctx)
+		if input.ParticipantID == "" {
+			return nil, huma.Error400BadRequest("missing participant_id")
+		}
+
+		logger.Info("generating qr code", zap.String("participant_id", input.ParticipantID))
+
+		qr, err := qrcode.New(input.ParticipantID, qrcode.Medium)
+		if err != nil {
+			logger.Error("failed to generate qr code", zap.Error(err))
+			return nil, huma.Error500InternalServerError("failed to generate qr code", err)
+		}
+
+		png, err := qr.PNG(256)
+		if err != nil {
+			logger.Error("failed to render qr code as png", zap.Error(err))
+			return nil, huma.Error500InternalServerError("failed to render qr code", err)
+		}
+
+		return &struct {
+			ContentType string `header:"Content-Type"`
+			Body        []byte
+		}{
+			ContentType: "image/png",
+			Body:        png,
+		}, nil
+	})
 }
