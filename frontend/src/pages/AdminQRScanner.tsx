@@ -21,17 +21,15 @@ export default function AdminQRScanner() {
       <DebugPanel />
 
       <h1 className="page-title">QR Scanner</h1>
-      <p className="page-sub">Point the camera at a guest's invite QR to mark them as checked in</p>
+      <p className="page-sub">Scan a guest's QR code to mark them as checked in</p>
 
-      <div className="scanner-shell" style={{ maxWidth: 480 }}>
-        <div className="scanner-inner">
-          <QRScanner onResult={handleResult} />
-          {result && (
-            <div className={`scanner-result ${result.ok ? 'attended' : 'error'}`}>
-              {result.message}
-            </div>
-          )}
-        </div>
+      <div className="scanner-section">
+        <QRScanner onResult={handleResult} />
+        {result && (
+          <div className={`scanner-result ${result.ok ? 'attended' : 'error'}`}>
+            {result.message}
+          </div>
+        )}
       </div>
     </div>
   )

@@ -57,6 +57,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/invite/:external_id" element={<InvitePage />} />
+      <Route path="/event/:external_id" element={<InvitePage />} />
       <Route path="/admin/login" element={<AdminLogin />} />
       <Route
         path="/admin/dashboard"
